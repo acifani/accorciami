@@ -5,7 +5,7 @@ const morgan = require('morgan');
 const { Tedis } = require('tedis');
 
 const PORT = process.env.BASE_PORT || 8080;
-const BASE_URL = `${process.env.BASE_URL || 'http://localhost'}:${PORT}`;
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split(
   ''
 );
