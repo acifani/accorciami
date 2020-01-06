@@ -1,19 +1,24 @@
+// @ts-check
 const { URL } = require('url');
 const express = require('express');
+const { Tedis } = require('tedis');
 
 const PORT = process.env.BASE_PORT || 8080;
 const BASE_URL = `${process.env.BASE_URL || 'http://localhost'}:${PORT}`;
-
-const app = express();
-app.use(express.json());
-
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split(
   ''
 );
 const BASE = ALPHABET.length;
-let counter = 0;
 
-app.post('/accorcia', (req, res) => {
+const tedis = new Tedis({
+  host: process.env.REDIS_HOST,
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+  password: process.env.REDIS_PASSWORD
+});
+const app = express();
+app.use(express.json());
+
+app.post('/accorcia', async (req, res) => {
   const url = req.body.url;
   if (!url) {
     res.status(400).json({
@@ -22,7 +27,7 @@ app.post('/accorcia', (req, res) => {
     });
   }
 
-  const key = generateShortURL(url);
+  const key = await generateShortURL(url);
   const shortURL = new URL(key, BASE_URL);
 
   res.json({
@@ -31,11 +36,12 @@ app.post('/accorcia', (req, res) => {
   });
 });
 
-app.get('/:id', (req, res) => {
+app.get('/:id', async (req, res) => {
   const shortURL = req.params.id;
-  const longURL = getLongURL(shortURL);
+  const longURL = await getLongURL(shortURL);
 
   if (longURL) {
+    await tedis.hincrby(shortURL, 'visits', 1);
     res.redirect(longURL);
   } else {
     res.status(404).json({
@@ -47,13 +53,19 @@ app.get('/:id', (req, res) => {
 
 app.listen(PORT, () => console.error(`Listening on port ${PORT}!`));
 
-function generateShortURL(longURL) {
-  const id = counter++;
-  return encode(id);
+async function generateShortURL(longURL) {
+  const id = await tedis.incr('counter');
+  const shortURL = encode(id);
+  await tedis.hmset(shortURL, {
+    long_url: longURL,
+    visits: 0
+  });
+
+  return shortURL;
 }
 
-function getLongURL(shortURL) {
-  return keys[shortURL];
+async function getLongURL(shortURL) {
+  return tedis.hget(shortURL, 'long_url');
 }
 
 function encode(i) {
@@ -62,7 +74,7 @@ function encode(i) {
   let s = '';
   while (i > 0) {
     s = s + ALPHABET[i % BASE];
-    i = parseInt(i / BASE, 10);
+    i = i / BASE;
   }
 
   return s;
