@@ -1,0 +1,16 @@
+{
+  "name": "accorciami",
+  "version": "0.0.1",
+  "description": "URL shortener",
+  "main": "index.js",
+  "author": "Alessandro Cifani <alessandro.cifani@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "tedis": "^0.1.10"
+  },
+  "devDependencies": {}
+}
