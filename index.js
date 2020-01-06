@@ -1,6 +1,7 @@
 // @ts-check
 const { URL } = require('url');
 const express = require('express');
+const morgan = require('morgan');
 const { Tedis } = require('tedis');
 
 const PORT = process.env.BASE_PORT || 8080;
@@ -17,6 +18,7 @@ const tedis = new Tedis({
 });
 const app = express();
 app.use(express.json());
+app.use(morgan('combined'));
 
 app.post('/accorcia', async (req, res) => {
   const url = req.body.url;
