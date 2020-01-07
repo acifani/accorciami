@@ -18,10 +18,12 @@ const tedis = new Tedis({
 });
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static('public'));
 app.use(morgan('combined'));
 
 app.post('/accorcia', async (req, res) => {
-  const url = req.body.url;
+  const url = req.body.url || req.params.url;
   if (!url) {
     res.status(400).json({
       status_code: 400,
@@ -53,7 +55,9 @@ app.get('/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.error(`Listening on port ${PORT}!`));
+app.listen(PORT, () => {
+  console.log(`Listening on port ${PORT}!`);
+});
 
 async function generateShortURL(longURL) {
   const id = await tedis.incr('counter');
@@ -73,11 +77,11 @@ async function getLongURL(shortURL) {
 function encode(i) {
   if (i == 0) return ALPHABET[0];
 
-  let s = '';
+  let s = [];
   while (i > 0) {
-    s = s + ALPHABET[i % BASE];
-    i = i / BASE;
+    s = [ALPHABET[i % BASE], ...s];
+    i = Math.floor(i / BASE);
   }
 
-  return s;
+  return s.join('');
 }
