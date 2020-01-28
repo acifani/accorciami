@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
 )
@@ -35,10 +37,11 @@ func accorciaHandler(store *store) func(http.ResponseWriter, *http.Request) {
 		shortURL := encodeInBase62(id)
 		store.createNewURL(shortURL, url)
 
+		responseURL := fmt.Sprintf("%s/%s", os.Getenv("BASE_URL"), shortURL)
 		w.Header().Set("Content-Type", "application/json")
 		response := accorciaSuccessResponse{
 			StatusCode: http.StatusOK,
-			ShortURL:   shortURL,
+			ShortURL:   responseURL,
 		}
 		json.NewEncoder(w).Encode(response)
 	}
