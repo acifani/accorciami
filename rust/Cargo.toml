@@ -1,0 +1,12 @@
+[package]
+name = "rust"
+version = "0.1.0"
+authors = ["Alessandro Cifani <alessandro.cifani@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+actix-web = "2.0.0"
+actix-rt = "1.0.0"
+env_logger = "0.7.1"
+redis = "0.15.1"
+serde = { version = "1.0", features = ["derive"] }
