@@ -110,8 +110,8 @@ async fn accorcia_handler(url: &str, state: &AppState) -> Result<HttpResponse, H
     };
 
     let short_url = encode_in_base62(next_id);
-    let create_url_result = db::create_new_url(&state.db, &short_url, &url).await;
     let final_url = format!("{}{}", state.base_url, short_url);
+    let create_url_result = db::create_new_url(&state.db, &short_url, &url).await;
 
     match create_url_result {
         Ok(_) => Ok(HttpResponse::Ok().json(AccorciaResponse {
