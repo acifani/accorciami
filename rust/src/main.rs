@@ -7,17 +7,26 @@ mod db;
 use base62::encode_in_base62;
 use db::DbClient;
 
+struct AppState {
+    db: DbClient,
+    base_url: String,
+}
+
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
 
+    let base_url = std::env::var("BASE_URL").unwrap();
     let redis_host = std::env::var("REDIS_HOST").unwrap_or("redis://127.0.0.1:6379/".to_string());
     let db = db::make(redis_host).unwrap();
 
     HttpServer::new(move || {
         App::new()
-            .data(db.clone())
+            .data(AppState {
+                db: db.clone(),
+                base_url: base_url.clone(),
+            })
             .wrap(middleware::Logger::default())
             .configure(app_config)
     })
@@ -70,20 +79,20 @@ struct AccorciaResponse {
 
 async fn accorcia_json(
     params: web::Json<AccorciaParams>,
-    db: web::Data<DbClient>,
+    state: web::Data<AppState>,
 ) -> Result<HttpResponse, HttpResponse> {
-    accorcia_handler(&params.url, &db).await
+    accorcia_handler(&params.url, &state).await
 }
 
 async fn accorcia_form(
     params: web::Form<AccorciaParams>,
-    db: web::Data<DbClient>,
+    state: web::Data<AppState>,
 ) -> Result<HttpResponse, HttpResponse> {
-    accorcia_handler(&params.url, &db).await
+    accorcia_handler(&params.url, &state).await
 }
 
-async fn accorcia_handler(url: &str, db: &db::DbClient) -> Result<HttpResponse, HttpResponse> {
-    let next_id_result = db::get_next_id(&db).await;
+async fn accorcia_handler(url: &str, state: &AppState) -> Result<HttpResponse, HttpResponse> {
+    let next_id_result = db::get_next_id(&state.db).await;
     let next_id = match next_id_result {
         Ok(next_id) => next_id,
         Err(_) => {
@@ -97,16 +106,17 @@ async fn accorcia_handler(url: &str, db: &db::DbClient) -> Result<HttpResponse, 
     let url: String = if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else {
-        "http://".to_owned() + url
+        format!("{}{}", "http://", url)
     };
 
     let short_url = encode_in_base62(next_id);
-    let create_url_result = db::create_new_url(&db, &short_url, &url).await;
+    let create_url_result = db::create_new_url(&state.db, &short_url, &url).await;
+    let final_url = format!("{}{}", state.base_url, short_url);
 
     match create_url_result {
         Ok(_) => Ok(HttpResponse::Ok().json(AccorciaResponse {
             status_code: 200,
-            short_url: short_url.to_string(),
+            short_url: final_url.to_string(),
         })),
         Err(_) => Err(HttpResponse::ServiceUnavailable().json(ErrorResponse {
             status_code: 503,
@@ -117,9 +127,9 @@ async fn accorcia_handler(url: &str, db: &db::DbClient) -> Result<HttpResponse, 
 
 async fn redirect_to_long_url(
     id: web::Path<String>,
-    db: web::Data<DbClient>,
+    state: web::Data<AppState>,
 ) -> Result<HttpResponse, HttpResponse> {
-    let long_url_res = db::get_long_url(&db, &id).await;
+    let long_url_res = db::get_long_url(&state.db, &id).await;
     let long_url = match long_url_res {
         Ok(long_url) => long_url,
         Err(_) => {
@@ -130,7 +140,7 @@ async fn redirect_to_long_url(
         }
     };
 
-    let _ = db::increment_visit_counter(&db, &long_url).await;
+    let _ = db::increment_visit_counter(&state.db, &long_url).await;
 
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, long_url)
