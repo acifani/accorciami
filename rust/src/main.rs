@@ -4,8 +4,11 @@ use serde::{Deserialize, Serialize};
 
 mod base62;
 mod db;
+mod error;
+
 use base62::encode_in_base62;
 use db::DbClient;
+use error::{AccorciamiError, Error};
 
 struct AppState {
     db: DbClient,
@@ -66,12 +69,6 @@ struct AccorciaParams {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ErrorResponse {
-    status_code: i32,
-    error: String,
-}
-
-#[derive(Serialize, Deserialize)]
 struct AccorciaResponse {
     status_code: i32,
     short_url: String,
@@ -80,29 +77,23 @@ struct AccorciaResponse {
 async fn accorcia_json(
     params: web::Json<AccorciaParams>,
     state: web::Data<AppState>,
-) -> Result<HttpResponse, HttpResponse> {
+) -> Result<HttpResponse, Error> {
     accorcia_handler(&params.url, &state).await
 }
 
 async fn accorcia_form(
     params: web::Form<AccorciaParams>,
     state: web::Data<AppState>,
-) -> Result<HttpResponse, HttpResponse> {
+) -> Result<HttpResponse, Error> {
     accorcia_handler(&params.url, &state).await
 }
 
-async fn accorcia_handler(url: &str, state: &AppState) -> Result<HttpResponse, HttpResponse> {
-    let next_id_result = db::get_next_id(&state.db).await;
-    let next_id = match next_id_result {
-        Ok(next_id) => next_id,
-        Err(_) => {
-            return Err(HttpResponse::ServiceUnavailable().json(ErrorResponse {
-                status_code: 503,
-                error: "We're having issues".to_string(),
-            }))
-        }
-    };
+async fn accorcia_handler(url: &str, state: &AppState) -> Result<HttpResponse, Error> {
+    if url == "" {
+        return Err(Error::from(AccorciamiError::EmptyURL));
+    }
 
+    let next_id = db::get_next_id(&state.db).await?;
     let url: String = if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else {
@@ -111,36 +102,23 @@ async fn accorcia_handler(url: &str, state: &AppState) -> Result<HttpResponse, H
 
     let short_url = encode_in_base62(next_id);
     let final_url = format!("{}{}", state.base_url, short_url);
-    let create_url_result = db::create_new_url(&state.db, &short_url, &url).await;
-
-    match create_url_result {
-        Ok(_) => Ok(HttpResponse::Ok().json(AccorciaResponse {
+    db::create_new_url(&state.db, &short_url, &url)
+        .await
+        .and(Ok(HttpResponse::Ok().json(AccorciaResponse {
             status_code: 200,
             short_url: final_url.to_string(),
-        })),
-        Err(_) => Err(HttpResponse::ServiceUnavailable().json(ErrorResponse {
-            status_code: 503,
-            error: "We're having issues".to_string(),
-        })),
-    }
+        })))
 }
 
 async fn redirect_to_long_url(
     id: web::Path<String>,
     state: web::Data<AppState>,
-) -> Result<HttpResponse, HttpResponse> {
-    let long_url_res = db::get_long_url(&state.db, &id).await;
-    let long_url = match long_url_res {
-        Ok(long_url) => long_url,
-        Err(_) => {
-            return Err(HttpResponse::NotFound().json(ErrorResponse {
-                status_code: 404,
-                error: "URL not found".to_string(),
-            }))
-        }
-    };
+) -> Result<HttpResponse, Error> {
+    let long_url = db::get_long_url(&state.db, &id)
+        .await
+        .map_err(|_| Error::from(AccorciamiError::URLNotFound))?;
 
-    let _ = db::increment_visit_counter(&state.db, &long_url).await;
+    db::increment_visit_counter(&state.db, &long_url).await?;
 
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, long_url)
