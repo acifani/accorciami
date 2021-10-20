@@ -1,5 +1,5 @@
 [package]
-name = "rust"
+name = "accorciami"
 version = "0.1.0"
 authors = ["Alessandro Cifani <alessandro.cifani@gmail.com>"]
 edition = "2018"
